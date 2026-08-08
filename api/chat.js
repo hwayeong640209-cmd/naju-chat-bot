@@ -2,6 +2,7 @@
 import fs from 'fs';
 import path from 'path';
 
+// AI 페르소나 및 응답 지침 (System Instruction)
 const SYSTEM_INSTRUCTION = `
 당신은 '한국도로교통공단 전남운전면허시험장'의 친절하고 논리적인 AI 도우미입니다.
 
@@ -31,10 +32,11 @@ export default async function handler(req, res) {
     try {
         const userQuery = req.body.userRequest?.utterance || req.body.prompt;
         
-        // 환경변수 양끝 공백 및 따옴표 제거 (인증 오류 방지)
-        let apiKey = process.env.GEMINI_API_KEY ? process.env.GEMINI_API_KEY.trim().replace(/^["']|["']$/g, '') : '';
+        // 환경변수 양끝 공백/따옴표 정제
+        const rawToken = process.env.GEMINI_API_KEY || '';
+        const token = rawToken.trim().replace(/^["']|["']$/g, '');
 
-        if (!apiKey) {
+        if (!token) {
             return res.status(200).json({
                 version: "2.0",
                 template: { outputs: [{ simpleText: { text: "서버 오류: GEMINI_API_KEY가 설정되지 않았습니다." } }] }
@@ -62,23 +64,25 @@ export default async function handler(req, res) {
 
         const promptText = `${SYSTEM_INSTRUCTION}\n\n[기본 안내 메모]\n${baseContext}\n\n[PDF 보충 정보]\n${pdfContext}\n\n[사용자 질문]\n${userQuery}`;
 
-        // Gemini REST API 호출 (API Key 파라미터 전달)
-        const apiResponse = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
-            {
-                method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    contents: [
-                        {
-                            parts: [{ text: promptText }]
-                        }
-                    ]
-                })
-            }
-        );
+        // 서비스 계정 토큰(AQ.A...) 지원 헤더 설정 (Bearer 및 API Key 겸용)
+        const headers = { 'Content-Type': 'application/json' };
+        let url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent`;
+
+        if (token.startsWith('AQ')) {
+            // AQ.A... 서비스 계정 토큰인 경우 Authorization 헤더에 적용
+            headers['Authorization'] = `Bearer ${token}`;
+        } else {
+            // 일반 AIzaSy... API 키인 경우 URL 쿼리로 적용
+            url += `?key=${token}`;
+        }
+
+        const apiResponse = await fetch(url, {
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify({
+                contents: [{ parts: [{ text: promptText }] }]
+            })
+        });
 
         const data = await apiResponse.json();
 
@@ -95,30 +99,14 @@ export default async function handler(req, res) {
 
         return res.status(200).json({
             version: "2.0",
-            template: {
-                outputs: [
-                    {
-                        simpleText: {
-                            text: replyText
-                        }
-                    }
-                ]
-            }
+            template: { outputs: [{ simpleText: { text: replyText } }] }
         });
 
     } catch (error) {
         console.error('Server Catch Error:', error);
         return res.status(200).json({
             version: "2.0",
-            template: {
-                outputs: [
-                    {
-                        simpleText: {
-                            text: "시스템 처리 중 에러가 발생했습니다."
-                        }
-                    }
-                ]
-            }
+            template: { outputs: [{ simpleText: { text: "시스템 처리 중 에러가 발생했습니다." } }] }
         });
     }
 }
