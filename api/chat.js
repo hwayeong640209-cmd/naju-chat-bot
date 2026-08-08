@@ -46,7 +46,7 @@ export default async function handler(req, res) {
             });
         }
 
-        // 파일 읽기 (경로 예외 처리)
+        // 파일 읽기
         let baseContext = '';
         let pdfContext = '';
         try {
@@ -58,9 +58,9 @@ export default async function handler(req, res) {
             console.error("파일 읽기 에러:", e);
         }
 
-        const promptText = `${SYSTEM_INSTRUCTION}\n\n[기본 메모]\n${baseContext}\n\n[보충 정보]\n${pdfContext}\n\n[사용자 질문]\n${userQuery}`;
+        const promptText = `${SYSTEM_INSTRUCTION}\n\n[기본 안내 메모]\n${baseContext}\n\n[PDF 보충 정보]\n${pdfContext}\n\n[사용자 질문]\n${userQuery}`;
 
-        // Gemini REST API 호출
+        // Gemini REST API 호출 (URL 최신 규격 적용)
         const apiResponse = await fetch(
             `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
             {
