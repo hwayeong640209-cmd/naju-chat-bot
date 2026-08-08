@@ -91,6 +91,18 @@ export default async function handler(req, res) {
 
     } catch (error) {
         console.error('Server Error:', error);
-        return res.status(500).json({ error: error.message });
+        return res.status(200).json({
+            version: "2.0",
+            template: {
+                outputs: [
+                    {
+                        simpleText: {
+                            text: replyText
+                        }
+                    }
+                ]
+            }
+        });
+      
     }
 }
