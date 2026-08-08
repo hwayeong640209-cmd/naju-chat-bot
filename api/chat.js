@@ -60,9 +60,10 @@ export default async function handler(req, res) {
 
         const promptText = `${SYSTEM_INSTRUCTION}\n\n[기본 안내 메모]\n${baseContext}\n\n[PDF 보충 정보]\n${pdfContext}\n\n[사용자 질문]\n${userQuery}`;
 
-        // 최신 Gemini 2.5 Flash 모델 전용 엔드포인트 호출
-        const apiResponse = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+        // 1차 시도: gemini-1.5-flash
+        let targetModel = 'gemini-1.5-flash';
+        let apiResponse = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${apiKey}`,
             {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -76,7 +77,27 @@ export default async function handler(req, res) {
             }
         );
 
-        const data = await apiResponse.json();
+        let data = await apiResponse.json();
+
+        // 1.5-flash 실패 시 2차 시도: gemini-2.0-flash
+        if (!apiResponse.ok) {
+            targetModel = 'gemini-2.0-flash';
+            apiResponse = await fetch(
+                `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${apiKey}`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [
+                            {
+                                parts: [{ text: promptText }]
+                            }
+                        ]
+                    })
+                }
+            );
+            data = await apiResponse.json();
+        }
 
         if (!apiResponse.ok) {
             console.error('Gemini API Error:', JSON.stringify(data));
