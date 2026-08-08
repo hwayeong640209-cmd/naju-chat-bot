@@ -23,22 +23,23 @@ export default async function handler(req, res) {
     }
 
     try {
-        const { prompt, history } = req.body;
+        // 카카오톡 챗봇 요청(userRequest.utterance)과 일반 Web 요청(prompt)을 모두 지원
+        const userQuery = req.body.userRequest?.utterance || req.body.prompt;
+        const history = req.body.history;
         const apiKey = process.env.GEMINI_API_KEY;
 
         if (!apiKey) {
             return res.status(500).json({ error: 'GEMINI_API_KEY가 설정되지 않았습니다.' });
         }
 
-        if (!prompt) {
-            return res.status(400).json({ error: '질문(prompt)이 없습니다.' });
+        if (!userQuery) {
+            return res.status(400).json({ error: '질문 내용이 없습니다.' });
         }
 
         // 📁 외부 파일(memo.txt, pdf_context.txt) 불러오기
         const memoPath = path.join(process.cwd(), 'data', 'memo.txt');
         const pdfContextPath = path.join(process.cwd(), 'data', 'pdf_context.txt');
 
-        // 파일이 존재하는지 확인 후 읽기 (없을 경우 빈 문자열 처리)
         const baseContext = fs.existsSync(memoPath) 
             ? fs.readFileSync(memoPath, 'utf-8') 
             : '';
@@ -47,7 +48,6 @@ export default async function handler(req, res) {
             ? fs.readFileSync(pdfContextPath, 'utf-8') 
             : '';
 
-        // 프론트엔드에서 넘어온 대화 기록
         const chatHistory = Array.isArray(history) ? history : [];
 
         // Gemini API 대화 데이터 포맷 세팅
@@ -65,7 +65,7 @@ export default async function handler(req, res) {
             ...chatHistory,
             {
                 role: 'user',
-                parts: [{ text: prompt }]
+                parts: [{ text: userQuery }]
             }
         ];
 
@@ -87,10 +87,7 @@ export default async function handler(req, res) {
 
         const replyText = data.candidates?.[0]?.content?.parts?.[0]?.text || '답변을 생성하지 못했습니다.';
 
-        return res.status(200).json({ text: replyText });
-
-    } catch (error) {
-        console.error('Server Error:', error);
+        // ★ 카카오톡 챗봇 전용 응답 포맷 반환
         return res.status(200).json({
             version: "2.0",
             template: {
@@ -103,6 +100,21 @@ export default async function handler(req, res) {
                 ]
             }
         });
-      
+
+    } catch (error) {
+        console.error('Server Error:', error);
+        // 오류 발생 시에도 카카오톡에 에러 메시지를 정중하게 반환
+        return res.status(200).json({
+            version: "2.0",
+            template: {
+                outputs: [
+                    {
+                        simpleText: {
+                            text: "죄송합니다. 시스템 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요."
+                        }
+                    }
+                ]
+            }
+        });
     }
 }
