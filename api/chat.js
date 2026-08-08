@@ -2,7 +2,6 @@
 import fs from 'fs';
 import path from 'path';
 
-// AI 페르소나 및 응답 지침 (System Instruction)
 const SYSTEM_INSTRUCTION = `
 당신은 '한국도로교통공단 전남운전면허시험장'의 친절하고 논리적인 AI 도우미입니다.
 
@@ -30,19 +29,16 @@ export default async function handler(req, res) {
     }
 
     try {
-        // 카카오톡 챗봇 요청(userRequest.utterance) 및 일반 Web 요청(prompt) 감지
         const userQuery = req.body.userRequest?.utterance || req.body.prompt;
-        const history = req.body.history;
         const apiKey = process.env.GEMINI_API_KEY;
 
         if (!apiKey) {
             return res.status(200).json({
                 version: "2.0",
-                template: { outputs: [{ simpleText: { text: "서버 설정 오류: GEMINI_API_KEY가 등록되지 않았습니다." } }] }
+                template: { outputs: [{ simpleText: { text: "서버 오류: GEMINI_API_KEY가 설정되지 않았습니다." } }] }
             });
         }
 
-        // 테스트용 문구("발화 내용")이거나 빈 값인 경우 기본 안내
         if (!userQuery || userQuery === "발화 내용") {
             return res.status(200).json({
                 version: "2.0",
@@ -50,55 +46,49 @@ export default async function handler(req, res) {
             });
         }
 
-        // 외부 파일(memo.txt, pdf_context.txt) 불러오기
-        const memoPath = path.join(process.cwd(), 'data', 'memo.txt');
-        const pdfContextPath = path.join(process.cwd(), 'data', 'pdf_context.txt');
+        // 파일 읽기 (경로 예외 처리)
+        let baseContext = '';
+        let pdfContext = '';
+        try {
+            const memoPath = path.join(process.cwd(), 'data', 'memo.txt');
+            const pdfContextPath = path.join(process.cwd(), 'data', 'pdf_context.txt');
+            if (fs.existsSync(memoPath)) baseContext = fs.readFileSync(memoPath, 'utf-8');
+            if (fs.existsSync(pdfContextPath)) pdfContext = fs.readFileSync(pdfContextPath, 'utf-8');
+        } catch (e) {
+            console.error("파일 읽기 에러:", e);
+        }
 
-        const baseContext = fs.existsSync(memoPath) ? fs.readFileSync(memoPath, 'utf-8') : '';
-        const pdfContext = fs.existsSync(pdfContextPath) ? fs.readFileSync(pdfContextPath, 'utf-8') : '';
+        const promptText = `${SYSTEM_INSTRUCTION}\n\n[기본 메모]\n${baseContext}\n\n[보충 정보]\n${pdfContext}\n\n[사용자 질문]\n${userQuery}`;
 
-        const chatHistory = Array.isArray(history) ? history : [];
-
-        // Gemini API 데이터 세팅
-        const contents = [
-            {
-                role: 'user',
-                parts: [{ text: `${SYSTEM_INSTRUCTION}\n\n--- [기본 안내 메모] ---\n${baseContext}\n\n--- [PDF 보충 정보] ---\n${pdfContext}` }]
-            },
-            {
-                role: 'model',
-                parts: [{ text: '네, 알겠습니다. 안내해 주신 기본 메모와 PDF 보충 정보를 기반으로 상냥하고 정확하게 답변해 드리겠습니다.' }]
-            },
-            ...chatHistory,
-            {
-                role: 'user',
-                parts: [{ text: userQuery }]
-            }
-        ];
-
-        // Gemini API 호출
+        // Gemini REST API 호출
         const apiResponse = await fetch(
             `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
             {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ contents })
+                body: JSON.stringify({
+                    contents: [
+                        {
+                            parts: [{ text: promptText }]
+                        }
+                    ]
+                })
             }
         );
 
         const data = await apiResponse.json();
 
         if (!apiResponse.ok) {
-            console.error('Gemini API Error:', data);
+            console.error('Gemini API 반환 에러 Detail:', JSON.stringify(data));
+            const errorMsg = data.error?.message || 'API 응답 오류';
             return res.status(200).json({
                 version: "2.0",
-                template: { outputs: [{ simpleText: { text: "Gemini API 응답 처리 중 오류가 발생했습니다." } }] }
+                template: { outputs: [{ simpleText: { text: `Gemini API 오류: ${errorMsg}` } }] }
             });
         }
 
         const replyText = data.candidates?.[0]?.content?.parts?.[0]?.text || '답변을 생성하지 못했습니다.';
 
-        // 카카오톡 챗봇 성공 응답 포맷
         return res.status(200).json({
             version: "2.0",
             template: {
@@ -113,14 +103,14 @@ export default async function handler(req, res) {
         });
 
     } catch (error) {
-        console.error('Server Error:', error);
+        console.error('Server Catch Error:', error);
         return res.status(200).json({
             version: "2.0",
             template: {
                 outputs: [
                     {
                         simpleText: {
-                            text: "죄송합니다. 시스템 처리 중 오류가 발생했습니다."
+                            text: "시스템 처리 중 에러가 발생했습니다."
                         }
                     }
                 ]
