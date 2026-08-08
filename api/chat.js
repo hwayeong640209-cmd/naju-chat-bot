@@ -32,7 +32,7 @@ export default async function handler(req, res) {
     try {
         const userQuery = req.body.userRequest?.utterance || req.body.prompt;
         
-        // 환경변수 양끝 공백 및 따옴표 제거
+        // 환경변수 양끝 공백 및 따옴표 정제
         const apiKey = (process.env.GEMINI_API_KEY || '').trim().replace(/^["']|["']$/g, '');
 
         if (!apiKey) {
@@ -49,7 +49,7 @@ export default async function handler(req, res) {
             });
         }
 
-        // 외부 파일 읽기
+        // 외부 파일 데이터 읽기
         let baseContext = '';
         let pdfContext = '';
         try {
@@ -63,19 +63,18 @@ export default async function handler(req, res) {
 
         const promptText = `${SYSTEM_INSTRUCTION}\n\n[기본 안내 메모]\n${baseContext}\n\n[PDF 보충 정보]\n${pdfContext}\n\n[사용자 질문]\n${userQuery}`;
 
-        // Gemini REST API 호출 (gemini-1.5-flash-latest 사용)
-        const apiResponse = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`,
-            {
-                method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json' 
-                },
-                body: JSON.stringify({
-                    contents: [{ parts: [{ text: promptText }] }]
-                })
-            }
-        );
+        // 새 프로젝트 API 키 표준 엔드포인트 호출
+        const targetUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+
+        const apiResponse = await fetch(targetUrl, {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json' 
+            },
+            body: JSON.stringify({
+                contents: [{ parts: [{ text: promptText }] }]
+            })
+        });
 
         const data = await apiResponse.json();
 
