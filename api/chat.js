@@ -30,7 +30,9 @@ export default async function handler(req, res) {
 
     try {
         const userQuery = req.body.userRequest?.utterance || req.body.prompt;
-        const apiKey = process.env.GEMINI_API_KEY;
+        
+        // 환경변수 양끝 공백 및 따옴표 제거 (인증 오류 방지)
+        let apiKey = process.env.GEMINI_API_KEY ? process.env.GEMINI_API_KEY.trim().replace(/^["']|["']$/g, '') : '';
 
         if (!apiKey) {
             return res.status(200).json({
@@ -46,7 +48,7 @@ export default async function handler(req, res) {
             });
         }
 
-        // 파일 읽기
+        // 외부 파일 읽기
         let baseContext = '';
         let pdfContext = '';
         try {
@@ -60,12 +62,14 @@ export default async function handler(req, res) {
 
         const promptText = `${SYSTEM_INSTRUCTION}\n\n[기본 안내 메모]\n${baseContext}\n\n[PDF 보충 정보]\n${pdfContext}\n\n[사용자 질문]\n${userQuery}`;
 
-        // 가장 안정적인 gemini-1.5-flash 호출
+        // Gemini REST API 호출 (API Key 파라미터 전달)
         const apiResponse = await fetch(
             `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
             {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 
+                    'Content-Type': 'application/json'
+                },
                 body: JSON.stringify({
                     contents: [
                         {
@@ -79,14 +83,8 @@ export default async function handler(req, res) {
         const data = await apiResponse.json();
 
         if (!apiResponse.ok) {
-            console.error('Gemini API Error:', JSON.stringify(data));
-            if (apiResponse.status === 429) {
-                return res.status(200).json({
-                    version: "2.0",
-                    template: { outputs: [{ simpleText: { text: "현재 AI 답변 요청량이 많아 일시적으로 제한되었습니다. 잠시 후(약 10초 뒤) 다시 시도해 주세요." } }] }
-                });
-            }
-            const errorMsg = data.error?.message || 'API 응답 오류';
+            console.error('Gemini API Error Detail:', JSON.stringify(data));
+            const errorMsg = data.error?.message || 'API 인증 및 응답 오류';
             return res.status(200).json({
                 version: "2.0",
                 template: { outputs: [{ simpleText: { text: `Gemini API 오류: ${errorMsg}` } }] }
