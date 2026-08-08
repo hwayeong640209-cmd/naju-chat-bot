@@ -60,10 +60,9 @@ export default async function handler(req, res) {
 
         const promptText = `${SYSTEM_INSTRUCTION}\n\n[기본 안내 메모]\n${baseContext}\n\n[PDF 보충 정보]\n${pdfContext}\n\n[사용자 질문]\n${userQuery}`;
 
-        // 1차 시도: gemini-1.5-flash
-        let targetModel = 'gemini-1.5-flash';
-        let apiResponse = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${apiKey}`,
+        // 가장 안정적인 gemini-1.5-flash 호출
+        const apiResponse = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
             {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -77,30 +76,16 @@ export default async function handler(req, res) {
             }
         );
 
-        let data = await apiResponse.json();
-
-        // 1.5-flash 실패 시 2차 시도: gemini-2.0-flash
-        if (!apiResponse.ok) {
-            targetModel = 'gemini-2.0-flash';
-            apiResponse = await fetch(
-                `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${apiKey}`,
-                {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        contents: [
-                            {
-                                parts: [{ text: promptText }]
-                            }
-                        ]
-                    })
-                }
-            );
-            data = await apiResponse.json();
-        }
+        const data = await apiResponse.json();
 
         if (!apiResponse.ok) {
             console.error('Gemini API Error:', JSON.stringify(data));
+            if (apiResponse.status === 429) {
+                return res.status(200).json({
+                    version: "2.0",
+                    template: { outputs: [{ simpleText: { text: "현재 AI 답변 요청량이 많아 일시적으로 제한되었습니다. 잠시 후(약 10초 뒤) 다시 시도해 주세요." } }] }
+                });
+            }
             const errorMsg = data.error?.message || 'API 응답 오류';
             return res.status(200).json({
                 version: "2.0",
