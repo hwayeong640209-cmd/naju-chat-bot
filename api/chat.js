@@ -46,7 +46,7 @@ export default async function handler(req, res) {
             });
         }
 
-        // 외부 파일 불러오기
+        // 파일 읽기
         let baseContext = '';
         let pdfContext = '';
         try {
@@ -60,7 +60,7 @@ export default async function handler(req, res) {
 
         const promptText = `${SYSTEM_INSTRUCTION}\n\n[기본 안내 메모]\n${baseContext}\n\n[PDF 보충 정보]\n${pdfContext}\n\n[사용자 질문]\n${userQuery}`;
 
-        // Gemini REST API 호출 (가장 안정적인 최신 호환 엔드포인트 적용)
+        // 최신 Gemini 2.5 Flash 모델 전용 엔드포인트 호출
         const apiResponse = await fetch(
             `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
             {
@@ -78,33 +78,12 @@ export default async function handler(req, res) {
 
         const data = await apiResponse.json();
 
-        // 2.5-flash 지원이 안 될 경우 1.5-flash-latest로 재시도
         if (!apiResponse.ok) {
-            const fallbackResponse = await fetch(
-                `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`,
-                {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        contents: [{ parts: [{ text: promptText }] }]
-                    })
-                }
-            );
-            const fallbackData = await fallbackResponse.json();
-
-            if (!fallbackResponse.ok) {
-                console.error('Gemini API Error:', JSON.stringify(fallbackData));
-                const errorMsg = fallbackData.error?.message || 'API 응답 오류';
-                return res.status(200).json({
-                    version: "2.0",
-                    template: { outputs: [{ simpleText: { text: `Gemini API 오류: ${errorMsg}` } }] }
-                });
-            }
-
-            const fallbackReply = fallbackData.candidates?.[0]?.content?.parts?.[0]?.text || '답변을 생성하지 못했습니다.';
+            console.error('Gemini API Error:', JSON.stringify(data));
+            const errorMsg = data.error?.message || 'API 응답 오류';
             return res.status(200).json({
                 version: "2.0",
-                template: { outputs: [{ simpleText: { text: fallbackReply } }] }
+                template: { outputs: [{ simpleText: { text: `Gemini API 오류: ${errorMsg}` } }] }
             });
         }
 
